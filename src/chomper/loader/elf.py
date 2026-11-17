@@ -1,11 +1,12 @@
 import os
 from itertools import chain
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, cast
 
 from elftools.elf.dynamic import DynamicSegment
 from elftools.elf.elffile import ELFFile
 from elftools.elf.enums import ENUM_RELOC_TYPE_AARCH64, ENUM_RELOC_TYPE_ARM
 from elftools.elf.relocation import Relocation
+from elftools.elf.sections import SymbolTableSection
 
 from chomper import const
 from chomper.utils import aligned, to_unsigned
@@ -43,24 +44,32 @@ class ELFLoader(BaseLoader):
         """Get symbols in the module."""
         symbols = []
 
-        for segment in elffile.iter_segments(type="PT_DYNAMIC"):
-            for symbol in segment.iter_symbols():
-                if symbol.entry["st_info"]["bind"] in ("STB_GLOBAL", "STB_WEAK"):
-                    if symbol.entry["st_shndx"] == "SHN_UNDEF":
-                        continue
+        dynsym = elffile.get_section_by_name(".dynsym")
+        if dynsym is not None:
+            symbol_iterator = cast(SymbolTableSection, dynsym).iter_symbols()
+        else:
+            symbol_iterator = chain.from_iterable(
+                cast(DynamicSegment, segment).iter_symbols()
+                for segment in elffile.iter_segments(type="PT_DYNAMIC")
+            )
 
-                    symbol_type = (
-                        SymbolType.FUNC
-                        if symbol.entry["st_info"]["type"] == "STT_FUNC"
-                        else SymbolType.OTHER
-                    )
+        for symbol in symbol_iterator:
+            if symbol.entry["st_info"]["bind"] in ("STB_GLOBAL", "STB_WEAK"):
+                if symbol.entry["st_shndx"] == "SHN_UNDEF":
+                    continue
 
-                    symbol_struct = Symbol(
-                        address=module_base + symbol.entry["st_value"],
-                        name=symbol.name,
-                        type=symbol_type,
-                    )
-                    symbols.append(symbol_struct)
+                symbol_type = (
+                    SymbolType.FUNC
+                    if symbol.entry["st_info"]["type"] == "STT_FUNC"
+                    else SymbolType.OTHER
+                )
+
+                symbol_struct = Symbol(
+                    address=module_base + symbol.entry["st_value"],
+                    name=symbol.name,
+                    type=symbol_type,
+                )
+                symbols.append(symbol_struct)
 
         return symbols
 
