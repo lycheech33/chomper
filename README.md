@@ -132,4 +132,4 @@ result = emu.read_bytes(result_buf, result_len)
 ```
 
 ## Examples
-There are some cryptographic algorithms emulation codes in [crypto](https://github.com/sledgeh4w/chomper/tree/main/examples/crypto).
+There are some signing and encryption examples in [apps](https://github.com/sledgeh4w/chomper/tree/main/examples/apps).

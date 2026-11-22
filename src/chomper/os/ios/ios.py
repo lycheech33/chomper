@@ -41,6 +41,7 @@ from .structs import (
     Attrlist,
     Dirent,
     Flock,
+    Fsid,
     Kevent,
     SockaddrIn,
     Stat64,
@@ -272,9 +273,12 @@ class IosOs(PosixOs):
         # Used to validate the sig field of `pthread_t`
         self._pthread_ptr_munge_token = 0
 
-        # Semaphore
-        self._semaphore_map = {}
-        self._semaphore_queue = {}
+        # Mach semaphore
+        self._semaphore_counts: Dict[int, int] = {}
+        self._semaphore_waiters = {}
+
+        # POSIX semaphore
+        self._posix_sem_names: Dict[str, int] = {}
 
         # Mach port
         self._mach_ports: HandleManager[MachPortEntry] = HandleManager(
@@ -287,7 +291,7 @@ class IosOs(PosixOs):
         # Mach msg
         self._mach_msg_handler = MachMsgHandler(self.emu, self._mach_ports)
 
-        # Xpc message
+        # XPC message
         self._xpc_message_handler = XpcMessageHandler(self.emu)
 
         # keychain
@@ -435,7 +439,7 @@ class IosOs(PosixOs):
             pass
 
         dev = (1 << 24) | 7  # makedev(major=1, minor=7)
-        fsid = dev | (24 << 32)
+        fsid = Fsid(val=(dev, 24))
 
         blocks = 31218501
         bfree = blocks * 95 // 100
@@ -504,10 +508,20 @@ class IosOs(PosixOs):
         return self._tid
 
     @log_call
-    def getattrlist(self, path: str, alist_ptr: int, buf: int, buf_size: int) -> int:
-        alist = read_struct(self.emu, alist_ptr, Attrlist)
+    def thread_selfusage(self) -> int:
+        uptime_ns = time.time_ns() - self._boot_time_ns
 
-        real_path = self.emu.os._get_real_path(path)
+        return uptime_ns * 3 // 100
+
+    def _getattrlist(
+        self,
+        real_path: str,
+        path: str,
+        alist_ptr: int,
+        buf: int,
+        buf_size: int,
+    ) -> int:
+        alist = read_struct(self.emu, alist_ptr, Attrlist)
 
         try:
             st = os.stat(real_path)
@@ -656,6 +670,50 @@ class IosOs(PosixOs):
         return 0
 
     @log_call
+    def getattrlist(self, path: str, alist_ptr: int, buf: int, buf_size: int) -> int:
+        real_path = self.emu.os._get_real_path(path)
+
+        return self._getattrlist(real_path, path, alist_ptr, buf, buf_size)
+
+    @log_call
+    def fgetattrlist(self, fd: int, alist_ptr: int, buf: int, buf_size: int) -> int:
+        entry = self._get_fd_entry(fd)
+        real_path = self._get_real_path(entry.path)
+
+        return self._getattrlist(real_path, entry.path, alist_ptr, buf, buf_size)
+
+    def _setattrlistat(self, path: str, alist_ptr: int, buf: int) -> int:
+        alist = read_struct(self.emu, alist_ptr, Attrlist)
+
+        # Only handle requests from `futimens` and `utimensat` for now.
+        if alist.commonattr == const.ATTR_CMN_MODTIME | const.ATTR_CMN_ACCTIME:
+            mtime = read_struct(self.emu, buf, Timespec)
+            atime = read_struct(self.emu, buf + ctypes.sizeof(Timespec), Timespec)
+            times = (atime.to_seconds(), mtime.to_seconds())
+
+            self.utimes(path, times)
+
+        return 0
+
+    @log_call
+    def setattrlistat(
+        self,
+        dir_fd: int,
+        path: str,
+        alist_ptr: int,
+        buf: int,
+    ) -> int:
+        path = self._resolve_dir_fd(dir_fd, path)
+
+        return self._setattrlistat(path, alist_ptr, buf)
+
+    @log_call
+    def fsetattrlist(self, fd: int, alist_ptr: int, buf: int) -> int:
+        entry = self._get_fd_entry(fd)
+
+        return self._setattrlistat(entry.path, alist_ptr, buf)
+
+    @log_call
     def getdirentries(self, fd: int, offset: int) -> Optional[bytes]:
         entry = self._get_fd_entry(fd)
 
@@ -799,6 +857,60 @@ class IosOs(PosixOs):
                 event_list.append(event)
                 event_ptr += ctypes.sizeof(Kevent)
 
+        return -1
+
+    @log_call
+    def kevent64(
+        self,
+        kq: int,
+        change_ptr: int,
+        n_changes: int,
+        event_ptr: int,
+        n_event: int,
+        flags: int,
+        timeout: int,
+    ) -> int:
+        return -1
+
+    def _getxattr(
+        self,
+        path: str,
+        name: str,
+        value: int,
+        size: int,
+        position: int,
+        options: int,
+    ) -> int:
+        raise SystemOperationFailed("No such extended attribute", SyscallError.ENOATTR)
+
+    @log_call
+    def getxattr(
+        self,
+        path: str,
+        name: str,
+        value: int,
+        size: int,
+        position: int,
+        options: int,
+    ) -> int:
+        return self._getxattr(path, name, value, size, position, options)
+
+    @log_call
+    def fgetxattr(
+        self,
+        fd: int,
+        name: str,
+        value: int,
+        size: int,
+        position: int,
+        options: int,
+    ) -> int:
+        entry = self._get_fd_entry(fd)
+
+        return self._getxattr(entry.path, name, value, size, position, options)
+
+    @log_call
+    def pathconf(self, path: str, name: int) -> int:
         return -1
 
     def _setup_tls(self):
@@ -1329,36 +1441,36 @@ class IosOs(PosixOs):
     def semaphore_create(self, value: int) -> int:
         sem = 1
         while sem < 10000:
-            if sem not in self._semaphore_map:
+            if sem not in self._semaphore_counts:
                 break
             sem += 1
         else:
             return 0
 
-        self._semaphore_map[sem] = value
+        self._semaphore_counts[sem] = value
         return sem
 
     def semaphore_destroy(self, sem: int):
-        if sem in self._semaphore_map:
-            del self._semaphore_map[sem]
+        if sem in self._semaphore_counts:
+            del self._semaphore_counts[sem]
 
     def semaphore_wait(self, sem: int, timeout: int = -1) -> int:
-        value = self._semaphore_map[sem]
+        value = self._semaphore_counts[sem]
 
         # Need to wait
         if value <= 0:
             # start_time = time.time()
             # rand_id = uuid.uuid4()
             #
-            # if semaphore not in self._semaphore_queue:
-            #     self._semaphore_queue[semaphore] = []
-            # self._semaphore_queue[semaphore].append(rand_id)
+            # if semaphore not in self._semaphore_waiters:
+            #     self._semaphore_waiters[semaphore] = []
+            # self._semaphore_waiters[semaphore].append(rand_id)
             #
             # while True:
             #     if 0 < timeout < time.time() - start_time:
             #         return -1
             #
-            #     if rand_id not in self._semaphore_queue[semaphore]:
+            #     if rand_id not in self._semaphore_waiters[semaphore]:
             #         return 0
             #
             #     time.sleep(0.1)
@@ -1366,16 +1478,72 @@ class IosOs(PosixOs):
             self.emu.logger.warning("Ignored a semaphore waiting.")
             return -1
 
-        self._semaphore_map[sem] -= 1
+        self._semaphore_counts[sem] -= 1
         return 0
 
     def semaphore_signal(self, sem: int) -> int:
-        if self._semaphore_queue.get(sem):
-            self._semaphore_queue[sem].pop(0)
+        if self._semaphore_waiters.get(sem):
+            self._semaphore_waiters[sem].pop(0)
         else:
-            self._semaphore_map[sem] += 1
+            self._semaphore_counts[sem] += 1
 
         return const.KERN_SUCCESS
+
+    @log_call
+    def sem_open(self, name: str, oflag: int, mode: int, value: int) -> int:
+        if name in self._posix_sem_names:
+            if oflag & const.O_EXCL:
+                raise SystemOperationFailed("Semaphore exists", SyscallError.EEXIST)
+
+            return self._posix_sem_names[name]
+
+        if not (oflag & const.O_CREAT):
+            raise SystemOperationFailed("No such semaphore", SyscallError.ENOENT)
+
+        sem = self.semaphore_create(value)
+        self._posix_sem_names[name] = sem
+
+        return sem
+
+    @log_call
+    def sem_close(self, sem: int) -> int:
+        return 0
+
+    @log_call
+    def sem_unlink(self, name: str) -> int:
+        sem = self._posix_sem_names.pop(name, None)
+        if sem is None:
+            raise SystemOperationFailed("No such semaphore", SyscallError.ENOENT)
+
+        self.semaphore_destroy(sem)
+
+        return 0
+
+    @log_call
+    def sem_wait(self, sem: int) -> int:
+        if sem not in self._semaphore_counts:
+            raise SystemOperationFailed("Invalid semaphore", SyscallError.EINVAL)
+
+        if self.semaphore_wait(sem) != 0:
+            raise SystemOperationFailed("Wait semaphore", SyscallError.ETIMEDOUT)
+
+        return 0
+
+    @log_call
+    def sem_trywait(self, sem: int) -> int:
+        value = self._semaphore_counts.get(sem, 0)
+        if value <= 0:
+            raise SystemOperationFailed("Semaphore unavailable", SyscallError.EAGAIN)
+
+        self._semaphore_counts[sem] = value - 1
+
+        return 0
+
+    @log_call
+    def sem_post(self, sem: int) -> int:
+        self.semaphore_signal(sem)
+
+        return 0
 
     @log_call
     def mach_port_construct(self) -> int:

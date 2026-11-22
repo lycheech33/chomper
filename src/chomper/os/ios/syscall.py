@@ -15,8 +15,6 @@ from chomper.utils import to_signed, struct_to_bytes, read_struct
 
 from . import const
 from .structs import (
-    Attrlist,
-    Timespec,
     Timeval,
     Rlimit,
     Rusage,
@@ -38,6 +36,8 @@ SYSCALL_ERRORS = {
     SyscallError.EINVAL: (const.EINVAL, "EINVAL"),
     SyscallError.EMFILE: (const.EMFILE, "EMFILE"),
     SyscallError.ETIMEDOUT: (const.ETIMEDOUT, "ETIMEDOUT"),
+    SyscallError.ENOATTR: (const.ENOATTR, "ENOATTR"),
+    SyscallError.EAGAIN: (const.EAGAIN, "EAGAIN"),
 }
 
 SYSCALL_NAMES = {
@@ -82,6 +82,7 @@ SYSCALL_NAMES = {
     const.SYS_SYMLINK: "SYS_symlink",
     const.SYS_READLINK: "SYS_readlink",
     const.SYS_EXECVE: "SYS_execve",
+    const.SYS_UMASK: "SYS_umask",
     const.SYS_CHROOT: "SYS_chroot",
     const.SYS_MSYNC: "SYS_msync",
     const.SYS_MUNMAP: "SYS_munmap",
@@ -128,10 +129,12 @@ SYSCALL_NAMES = {
     const.SYS_QUOTACTL: "SYS_quotactl",
     const.SYS_CSOPS: "SYS_csops",
     const.SYS_CSOPS_AUDITTOKEN: "SYS_csops_audittoken",
+    const.SYS_PATHCONF: "SYS_pathconf",
     const.SYS_GETRLIMIT: "SYS_getrlimit",
     const.SYS_SETRLIMIT: "SYS_setrlimit",
     const.SYS_MMAP: "SYS_mmap",
     const.SYS_LSEEK: "SYS_lseek",
+    const.SYS_TRUNCATE: "SYS_truncate",
     const.SYS_FTRUNCATE: "SYS_ftruncate",
     const.SYS_SYSCTL: "SYS_sysctl",
     const.SYS_MLOCK: "SYS_mlock",
@@ -139,12 +142,26 @@ SYSCALL_NAMES = {
     const.SYS_OPEN_DPROTECTED_NP: "SYS_open_dprotected_np",
     const.SYS_GETATTRLIST: "SYS_getattrlist",
     const.SYS_SETATTRLIST: "SYS_setattrlist",
+    const.SYS_FGETATTRLIST: "SYS_fgetattrlist",
     const.SYS_FSETATTRLIST: "SYS_fsetattrlist",
+    const.SYS_SETATTRLISTAT: "SYS_setattrlistat",
+    const.SYS_POLL: "SYS_poll",
+    const.SYS_GETXATTR: "SYS_getxattr",
+    const.SYS_FGETXATTR: "SYS_fgetxattr",
     const.SYS_SETXATTR: "SYS_setxattr",
     const.SYS_FSETXATTR: "SYS_fsetxattr",
+    const.SYS_REMOVEXATTR: "SYS_removexattr",
+    const.SYS_FREMOVEXATTR: "SYS_fremovexattr",
     const.SYS_LISTXATTR: "SYS_listxattr",
+    const.SYS_FLISTXATTR: "SYS_flistxattr",
     const.SYS_POSIX_SPAWN: "SYS_posix_spawn",
     const.SYS_SHM_OPEN: "SYS_shm_open",
+    const.SYS_SEM_OPEN: "SYS_sem_open",
+    const.SYS_SEM_CLOSE: "SYS_sem_close",
+    const.SYS_SEM_UNLINK: "SYS_sem_unlink",
+    const.SYS_SEM_WAIT: "SYS_sem_wait",
+    const.SYS_SEM_TRYWAIT: "SYS_sem_trywait",
+    const.SYS_SEM_POST: "SYS_sem_post",
     const.SYS_SYSCTLBYNAME: "SYS_sysctlbyname",
     const.SYS_GETTID: "SYS_gettid",
     const.SYS_IDENTITYSVC: "SYS_identitysvc",
@@ -172,6 +189,7 @@ SYSCALL_NAMES = {
     const.SYS_LCHOWN: "SYS_lchown",
     const.SYS_WORKQ_OPEN: "SYS_workq_open",
     const.SYS_WORKQ_KERNRETURN: "SYS_workq_kernreturn",
+    const.SYS_KEVENT64: "SYS_kevent64",
     const.SYS_THREAD_SELFID: "SYS_thread_selfid",
     const.SYS_KEVENT_QOS: "SYS_kevent_qos",
     const.SYS_KEVENT_ID: "SYS_kevent_id",
@@ -209,6 +227,7 @@ SYSCALL_NAMES = {
     const.SYS_SYMLINKAT: "SYS_symlinkat",
     const.SYS_MKDIRAT: "SYS_mkdirat",
     const.SYS_BSDTHREAD_CTL: "SYS_bsdthread_ctl",
+    const.SYS_THREAD_SELFUSAGE: "SYS_thread_selfusage",
     const.SYS_GUARDED_PWRITE_NP: "SYS_guarded_pwrite_np",
     const.SYS_RENAMEATX_NP: "SYS_renameatx_np",
     const.SYS_PERSONA: "SYS_persona",
@@ -315,6 +334,7 @@ class IosSyscallHandler(BaseSyscallHandler):
             const.SYS_SYMLINK: self._handle_sys_symlink,
             const.SYS_READLINK: self._handle_sys_readlink,
             const.SYS_EXECVE: self._handle_sys_execve,
+            const.SYS_UMASK: self._handle_sys_umask,
             const.SYS_CHROOT: self._handle_sys_chroot,
             const.SYS_MSYNC: self._handle_sys_msync,
             const.SYS_MUNMAP: self._handle_sys_munmap,
@@ -346,6 +366,7 @@ class IosSyscallHandler(BaseSyscallHandler):
             const.SYS_QUOTACTL: self._handle_sys_quotactl,
             const.SYS_CSOPS: self._handle_sys_csops,
             const.SYS_CSOPS_AUDITTOKEN: self._handle_sys_csops_audittoken,
+            const.SYS_PATHCONF: self._handle_sys_pathconf,
             const.SYS_GETRLIMIT: self._handle_sys_getrlimit,
             const.SYS_SETRLIMIT: self._handle_sys_setrlimit,
             const.SYS_MMAP: self._handle_sys_mmap,
@@ -366,6 +387,7 @@ class IosSyscallHandler(BaseSyscallHandler):
             const.SYS_DUP2: self._handle_sys_dup2,
             const.SYS_FCNTL: self._handle_sys_fcntl,
             const.SYS_SELECT: self._handle_sys_select,
+            const.SYS_TRUNCATE: self._handle_sys_truncate,
             const.SYS_FTRUNCATE: self._handle_sys_ftruncate,
             const.SYS_SYSCTL: self._handle_sys_sysctl,
             const.SYS_MLOCK: self._handle_sys_mlock,
@@ -373,12 +395,26 @@ class IosSyscallHandler(BaseSyscallHandler):
             const.SYS_OPEN_DPROTECTED_NP: self._handle_sys_open_dprotected_np,
             const.SYS_GETATTRLIST: self._handle_sys_getattrlist,
             const.SYS_SETATTRLIST: self._handle_sys_setattrlist,
+            const.SYS_FGETATTRLIST: self._handle_sys_fgetattrlist,
             const.SYS_FSETATTRLIST: self._handle_sys_fsetattrlist,
+            const.SYS_SETATTRLISTAT: self._handle_sys_setattrlistat,
+            const.SYS_POLL: self._handle_sys_poll,
+            const.SYS_GETXATTR: self._handle_sys_getxattr,
+            const.SYS_FGETXATTR: self._handle_sys_fgetxattr,
             const.SYS_SETXATTR: self._handle_sys_setxattr,
             const.SYS_FSETXATTR: self._handle_sys_fsetxattr,
+            const.SYS_REMOVEXATTR: self._handle_sys_removexattr,
+            const.SYS_FREMOVEXATTR: self._handle_sys_fremovexattr,
             const.SYS_LISTXATTR: self._handle_sys_listxattr,
+            const.SYS_FLISTXATTR: self._handle_sys_flistxattr,
             const.SYS_POSIX_SPAWN: self._handle_posix_spawn,
             const.SYS_SHM_OPEN: self._handle_sys_shm_open,
+            const.SYS_SEM_OPEN: self._handle_sys_sem_open,
+            const.SYS_SEM_CLOSE: self._handle_sys_sem_close,
+            const.SYS_SEM_UNLINK: self._handle_sys_sem_unlink,
+            const.SYS_SEM_WAIT: self._handle_sys_sem_wait,
+            const.SYS_SEM_TRYWAIT: self._handle_sys_sem_trywait,
+            const.SYS_SEM_POST: self._handle_sys_sem_post,
             const.SYS_SYSCTLBYNAME: self._handle_sys_sysctlbyname,
             const.SYS_GETTID: self._handle_sys_gettid,
             const.SYS_IDENTITYSVC: self._handle_sys_identitysvc,
@@ -406,6 +442,7 @@ class IosSyscallHandler(BaseSyscallHandler):
             const.SYS_LCHOWN: self._handle_sys_lchown,
             const.SYS_WORKQ_OPEN: self._handle_sys_workq_open,
             const.SYS_WORKQ_KERNRETURN: self._handle_sys_workq_kernreturn,
+            const.SYS_KEVENT64: self._handle_sys_kevent64,
             const.SYS_THREAD_SELFID: self._handle_sys_thread_selfid,
             const.SYS_KEVENT_QOS: self._handle_sys_kevent_qos,
             const.SYS_KEVENT_ID: self._handle_sys_kevent_id,
@@ -443,6 +480,7 @@ class IosSyscallHandler(BaseSyscallHandler):
             const.SYS_SYMLINKAT: self._handle_sys_symlinkat,
             const.SYS_MKDIRAT: self._handle_sys_mkdirat,
             const.SYS_BSDTHREAD_CTL: self._handle_sys_bsdthread_ctl,
+            const.SYS_THREAD_SELFUSAGE: self._handle_sys_thread_selfusage,
             const.SYS_GUARDED_PWRITE_NP: self._handle_sys_guarded_pwrite_np,
             const.SYS_RENAMEATX_NP: self._handle_sys_renameatx_np,
             const.SYS_PERSONA: self._handle_sys_persona,
@@ -794,6 +832,11 @@ class IosSyscallHandler(BaseSyscallHandler):
 
         return 0
 
+    def _handle_sys_umask(self):
+        mask = self.emu.get_arg(0)
+
+        return self.emu.os.umask(mask)
+
     def _handle_sys_chroot(self):
         self.emu.os.raise_permission_denied()
 
@@ -1065,6 +1108,12 @@ class IosSyscallHandler(BaseSyscallHandler):
     def _handle_sys_csops_audittoken():
         return 0
 
+    def _handle_sys_pathconf(self):
+        path = self.emu.read_string(self.emu.get_arg(0))
+        name = self.emu.get_arg(1)
+
+        return self.emu.ios_os.pathconf(path, name)
+
     def _handle_sys_getrlimit(self):
         resource = self.emu.get_arg(0)
         rlp = self.emu.get_arg(1)
@@ -1206,6 +1255,21 @@ class IosSyscallHandler(BaseSyscallHandler):
 
         return self.emu.os.select(nfds, readfds, writefds, errorfds, timeout)
 
+    def _handle_sys_poll(self):
+        fds = self.emu.get_arg(0)
+        nfds = self.emu.get_arg(1)
+        timeout = self.emu.get_arg(2)
+
+        return self.emu.os.poll(fds, nfds, timeout)
+
+    def _handle_sys_truncate(self):
+        path = self.emu.read_string(self.emu.get_arg(0))
+        length = self.emu.get_arg(1)
+
+        self.emu.os.truncate(path, length)
+
+        return 0
+
     def _handle_sys_ftruncate(self):
         fd = self.emu.get_arg(0)
         length = self.emu.get_arg(1)
@@ -1308,22 +1372,48 @@ class IosSyscallHandler(BaseSyscallHandler):
     def _handle_sys_setattrlist():
         return 0
 
+    def _handle_sys_fgetattrlist(self):
+        fd = self.emu.get_arg(0)
+        alist_ptr = self.emu.get_arg(1)
+        buf = self.emu.get_arg(2)
+        buf_size = self.emu.get_arg(3)
+
+        return self.emu.ios_os.fgetattrlist(fd, alist_ptr, buf, buf_size)
+
     def _handle_sys_fsetattrlist(self):
         fd = self.emu.get_arg(0)
-        attr_list_ptr = self.emu.get_arg(1)
-        attr_buf = self.emu.get_arg(2)
+        alist_ptr = self.emu.get_arg(1)
+        buf = self.emu.get_arg(2)
 
-        attr_list = read_struct(self.emu, attr_list_ptr, Attrlist)
+        return self.emu.ios_os.fsetattrlist(fd, alist_ptr, buf)
 
-        # Only handle requests from `futimens` for now.
-        if attr_list.commonattr == const.ATTR_CMN_MODTIME | const.ATTR_CMN_ACCTIME:
-            mtime = read_struct(self.emu, attr_buf, Timespec)
-            atime = read_struct(self.emu, attr_buf + ctypes.sizeof(Timespec), Timespec)
-            times = (atime.to_seconds(), mtime.to_seconds())
+    def _handle_sys_setattrlistat(self):
+        dir_fd = to_signed(self.emu.get_arg(0), 4)
+        path = self.emu.read_string(self.emu.get_arg(1))
+        alist_ptr = self.emu.get_arg(2)
+        buf = self.emu.get_arg(3)
 
-            self.emu.os.futimes(fd, times)
+        return self.emu.ios_os.setattrlistat(dir_fd, path, alist_ptr, buf)
 
-        return 0
+    def _handle_sys_getxattr(self):
+        path = self.emu.read_string(self.emu.get_arg(0))
+        name = self.emu.read_string(self.emu.get_arg(1))
+        value = self.emu.get_arg(2)
+        size = self.emu.get_arg(3)
+        position = self.emu.get_arg(4)
+        options = self.emu.get_arg(5)
+
+        return self.emu.ios_os.getxattr(path, name, value, size, position, options)
+
+    def _handle_sys_fgetxattr(self):
+        fd = self.emu.get_arg(0)
+        name = self.emu.read_string(self.emu.get_arg(1))
+        value = self.emu.get_arg(2)
+        size = self.emu.get_arg(3)
+        position = self.emu.get_arg(4)
+        options = self.emu.get_arg(5)
+
+        return self.emu.ios_os.fgetxattr(fd, name, value, size, position, options)
 
     @staticmethod
     def _handle_sys_setxattr():
@@ -1334,7 +1424,19 @@ class IosSyscallHandler(BaseSyscallHandler):
         return 0
 
     @staticmethod
+    def _handle_sys_removexattr():
+        return 0
+
+    @staticmethod
+    def _handle_sys_fremovexattr():
+        return 0
+
+    @staticmethod
     def _handle_sys_listxattr():
+        return 0
+
+    @staticmethod
+    def _handle_sys_flistxattr():
         return 0
 
     def _handle_posix_spawn(self):
@@ -1345,6 +1447,39 @@ class IosSyscallHandler(BaseSyscallHandler):
     @staticmethod
     def _handle_sys_shm_open():
         return 0x80000000
+
+    def _handle_sys_sem_open(self):
+        name = self.emu.read_string(self.emu.get_arg(0))
+        oflag = self.emu.get_arg(1)
+        mode = self.emu.get_arg(2)
+        value = self.emu.get_arg(3)
+
+        return self.emu.ios_os.sem_open(name, oflag, mode, value)
+
+    def _handle_sys_sem_close(self):
+        sem = self.emu.get_arg(0)
+
+        return self.emu.ios_os.sem_close(sem)
+
+    def _handle_sys_sem_unlink(self):
+        name = self.emu.read_string(self.emu.get_arg(0))
+
+        return self.emu.ios_os.sem_unlink(name)
+
+    def _handle_sys_sem_wait(self):
+        sem = self.emu.get_arg(0)
+
+        return self.emu.ios_os.sem_wait(sem)
+
+    def _handle_sys_sem_trywait(self):
+        sem = self.emu.get_arg(0)
+
+        return self.emu.ios_os.sem_trywait(sem)
+
+    def _handle_sys_sem_post(self):
+        sem = self.emu.get_arg(0)
+
+        return self.emu.ios_os.sem_post(sem)
 
     def _handle_sys_sysctlbyname(self):
         name = self.emu.read_string(self.emu.get_arg(0))
@@ -1576,6 +1711,25 @@ class IosSyscallHandler(BaseSyscallHandler):
             timeout,
         )
 
+    def _handle_sys_kevent64(self):
+        kq = self.emu.get_arg(0)
+        change_ptr = self.emu.get_arg(1)
+        n_changes = self.emu.get_arg(2)
+        event_ptr = self.emu.get_arg(3)
+        n_event = self.emu.get_arg(4)
+        flags = self.emu.get_arg(5)
+        timeout = self.emu.get_arg(6)
+
+        return self.emu.ios_os.kevent64(
+            kq,
+            change_ptr,
+            n_changes,
+            event_ptr,
+            n_event,
+            flags,
+            timeout,
+        )
+
     def _handle_sys_lchown(self):
         path = self.emu.read_string(self.emu.get_arg(0))
         uid = self.emu.get_arg(1)
@@ -1768,6 +1922,9 @@ class IosSyscallHandler(BaseSyscallHandler):
     @staticmethod
     def _handle_sys_bsdthread_ctl():
         return 0
+
+    def _handle_sys_thread_selfusage(self):
+        return self.emu.ios_os.thread_selfusage()
 
     def _handle_sys_guarded_pwrite_np(self):
         fd = self.emu.get_arg(0)

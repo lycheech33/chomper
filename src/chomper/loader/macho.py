@@ -166,7 +166,11 @@ class MachoLoader(BaseLoader):
 
                 # Look up from other modules
                 for module_symbol in self._symbol_map.get(alias_name, []):
-                    if module_symbol.library == symbol.export_info.alias_library.name:
+                    if (
+                        symbol.export_info.alias_library
+                        and module_symbol.library
+                        == symbol.export_info.alias_library.name
+                    ):
                         symbol_address = module_symbol.address
 
                 if not symbol_address:
@@ -186,6 +190,9 @@ class MachoLoader(BaseLoader):
 
             # The target library may be re-exported by other libraries
             libraries.extend(re_export_map.get(install_name, []))  # type: ignore
+
+            # Resolve bindings that do not specify a source library
+            libraries.append(None)
 
             # Lazy binding symbol
             for library in libraries:
@@ -253,7 +260,6 @@ class MachoLoader(BaseLoader):
         self,
         binary: lief.MachO.Binary,
         module_base: int,
-        install_name: Optional[str],
         symbols: List[Symbol],
     ) -> List[Binding]:
         """Process relocations for symbols."""
@@ -275,7 +281,11 @@ class MachoLoader(BaseLoader):
         lazy_bindings = []
 
         for binding in binary.bindings:
-            if binding.segment.name in ("__TEXT",):
+            if (
+                binding.symbol is None
+                or binding.segment
+                and binding.segment.name in ("__TEXT",)
+            ):
                 continue
 
             symbol_name = str(binding.symbol.name)
@@ -337,7 +347,6 @@ class MachoLoader(BaseLoader):
         self,
         binary: lief.MachO.Binary,
         module_base: int,
-        install_name: Optional[str],
         symbols: List[Symbol],
     ):
         """Process relocations base on relocation table and symbol references."""
@@ -379,7 +388,6 @@ class MachoLoader(BaseLoader):
         return self._process_symbol_relocation(
             binary,
             module_base,
-            install_name,
             symbols,
         )
 
@@ -494,7 +502,7 @@ class MachoLoader(BaseLoader):
         with open(module_file, "rb") as f:
             binary: lief.MachO.Binary = lief.parse(f)  # type: ignore
 
-        if not binary:
+        if binary is None:
             raise ValueError(f"Failed to parse Mach-O file: {module_file}")
 
         if module_base is None:
@@ -524,7 +532,6 @@ class MachoLoader(BaseLoader):
         lazy_bindings = self._process_relocation(
             binary,
             module_base,
-            install_name,
             symbols,
         )
         init_array = self._get_init_array(binary, module_base)
@@ -547,6 +554,8 @@ class MachoLoader(BaseLoader):
             shared_segments.append(shared_segment)
 
         text_segment = binary.get_segment("__TEXT")
+        if text_segment is None:
+            raise ValueError(f"Missing __TEXT segment: {module_file}")
 
         image_base = binary.imagebase
         image_header = module_base + text_segment.virtual_address

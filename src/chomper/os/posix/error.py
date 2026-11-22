@@ -12,3 +12,5 @@ class SyscallError(Enum):
     EINVAL = 8
     EMFILE = 9
     ETIMEDOUT = 10
+    ENOATTR = 11
+    EAGAIN = 12

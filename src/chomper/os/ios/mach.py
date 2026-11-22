@@ -1212,7 +1212,6 @@ class MachMsgHandler:
             address=displays_buf,
             deallocate=0,
             copy=0,
-            disposition=0,
             type=const.MACH_MSG_OOL_DESCRIPTOR,
             size=len(displays_data),
         )
@@ -1288,7 +1287,6 @@ class MachMsgHandler:
             address=modes_buf,
             deallocate=0,
             copy=0,
-            disposition=0,
             type=const.MACH_MSG_OOL_DESCRIPTOR,
             size=len(modes_data),
         )
@@ -1407,7 +1405,6 @@ class MachMsgHandler:
             address=config_buf,
             deallocate=0,
             copy=0,
-            disposition=0,
             type=const.MACH_MSG_OOL_DESCRIPTOR,
             size=len(config_data),
         )

@@ -177,8 +177,14 @@ def hook_dladdr(uc: Uc, address: int, size: int, user_data: HookContext):
 
     for module in emu.modules:
         if module.contains(addr):
+            image_name = module.macho_info.install_name
+            if not image_name:
+                image_name = f"{emu.ios_os.bundle_path}/{module.name}"
+            elif image_name.startswith("@rpath/"):
+                image_name = f"{emu.ios_os.bundle_path}/{image_name[7:]}"
+
             dl_info = DlInfo(
-                dli_fname=emu.create_const_string(module.name),
+                dli_fname=emu.create_const_string(image_name),
                 dli_fbase=module.base,
             )
 
