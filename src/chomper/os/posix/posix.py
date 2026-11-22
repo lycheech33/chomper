@@ -75,6 +75,9 @@ class PosixOs(ABC):
         # Current working directory
         self._working_dir = "/"
 
+        # File creation mask
+        self._umask = 0o022
+
         # Forward path
         self._path_map: Dict[str, str] = {}
 
@@ -669,6 +672,13 @@ class PosixOs(ABC):
             return 0
 
     @log_call
+    def umask(self, mask: int) -> int:
+        old_mask = self._umask
+        self._umask = mask & 0o777
+
+        return old_mask
+
+    @log_call
     def chmod(self, path: str, mode: int):
         self._chmod(path, mode)
 
@@ -998,6 +1008,25 @@ class PosixOs(ABC):
         return count
 
     @log_call
+    def poll(self, fds: int, nfds: int, timeout: int) -> int:
+        if not Feature.SOCKET_ENABLED:
+            self.raise_permission_denied()
+
+        count = 0
+
+        # Make all descriptors ready
+        for index in range(nfds):
+            pollfd_addr = fds + index * 8
+
+            events = self.emu.read_s16(pollfd_addr + 4)
+            self.emu.write_s16(pollfd_addr + 6, events)
+
+            if events:
+                count += 1
+
+        return count
+
+    @log_call
     def shutdown(self, sock: int, how: int):
         if not Feature.SOCKET_ENABLED:
             self.raise_permission_denied()
@@ -1067,11 +1096,21 @@ class PosixOs(ABC):
 
         return 0
 
+    def _truncate(self, path: str, length: int):
+        real_path = self._get_real_path(path)
+
+        with open(real_path, "r+b") as f:
+            f.truncate(length)
+
+    @log_call
+    def truncate(self, path: str, length: int):
+        self._truncate(path, length)
+
     @log_call
     def ftruncate(self, fd: int, length: int):
         entry = self._get_fd_entry(fd, FileEntry)
 
-        os.ftruncate(entry.real_fd, length)
+        self._truncate(entry.path, length)
 
     @log_call
     def utimes(self, path: str, times: Optional[Tuple[float, float]]):

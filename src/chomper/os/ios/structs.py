@@ -21,8 +21,8 @@ class Timespec(ctypes.Structure):
 class MachHeader64(ctypes.Structure):
     _fields_ = [
         ("magic", ctypes.c_uint32),
-        ("cputype", ctypes.c_uint32),
-        ("cpusubtype", ctypes.c_uint32),
+        ("cputype", ctypes.c_int32),
+        ("cpusubtype", ctypes.c_int32),
         ("filetype", ctypes.c_uint32),
         ("ncmds", ctypes.c_uint32),
         ("sizeofcmds", ctypes.c_uint32),
@@ -58,10 +58,21 @@ class Ifaddrs(ctypes.Structure):
     ]
 
 
+# sys/_types/_timeval32.h
+
+
+class Timeval32(ctypes.Structure):
+    _fields_ = [
+        ("tv_sec", ctypes.c_int32),
+        ("tv_usec", ctypes.c_int32),
+    ]
+
+
 # net/if.h
 
 
 class IfData(ctypes.Structure):
+    _pack_ = 4
     _fields_ = [
         ("ifi_type", ctypes.c_uint8),
         ("ifi_typelen", ctypes.c_uint8),
@@ -87,15 +98,16 @@ class IfData(ctypes.Structure):
         ("ifi_noproto", ctypes.c_uint32),
         ("ifi_recvtiming", ctypes.c_uint32),
         ("ifi_xmittiming", ctypes.c_uint32),
-        ("ifi_lastchange", Timespec),
+        ("ifi_lastchange", Timeval32),
         ("ifi_unused2", ctypes.c_uint32),
         ("ifi_hwassist", ctypes.c_uint32),
-        # ("ifi_reserved1", ctypes.c_uint32),
-        # ("ifi_reserved2", ctypes.c_uint32),
+        ("ifi_reserved1", ctypes.c_uint32),
+        ("ifi_reserved2", ctypes.c_uint32),
     ]
 
 
 class IfData64(ctypes.Structure):
+    _pack_ = 4
     _fields_ = [
         ("ifi_type", ctypes.c_uint8),
         ("ifi_typelen", ctypes.c_uint8),
@@ -121,7 +133,7 @@ class IfData64(ctypes.Structure):
         ("ifi_noproto", ctypes.c_uint64),
         ("ifi_recvtiming", ctypes.c_uint32),
         ("ifi_xmittiming", ctypes.c_uint32),
-        ("ifi_lastchange", Timespec),
+        ("ifi_lastchange", Timeval32),
     ]
 
 
@@ -208,6 +220,15 @@ class SockaddrIn6(ctypes.Structure):
     ]
 
 
+# sys/_types/_fsid_t.h
+
+
+class Fsid(ctypes.Structure):
+    _fields_ = [
+        ("val", ctypes.c_int32 * 2),
+    ]
+
+
 # sys/_types/_timeval.h
 
 
@@ -254,13 +275,26 @@ class Dirent(ctypes.Structure):
 
 
 class Kevent(ctypes.Structure):
+    _pack_ = 4
     _fields_ = [
         ("ident", ctypes.c_uint64),
         ("filter", ctypes.c_int16),
         ("flags", ctypes.c_uint16),
         ("fflags", ctypes.c_uint32),
-        ("data", ctypes.c_uint64),
+        ("data", ctypes.c_int64),
         ("udata", ctypes.c_uint64),
+    ]
+
+
+class Kevent64(ctypes.Structure):
+    _fields_ = [
+        ("ident", ctypes.c_uint64),
+        ("filter", ctypes.c_int16),
+        ("flags", ctypes.c_uint16),
+        ("fflags", ctypes.c_uint32),
+        ("data", ctypes.c_int64),
+        ("udata", ctypes.c_uint64),
+        ("ext", ctypes.c_uint64 * 2),
     ]
 
 
@@ -408,7 +442,7 @@ class Stat64(ctypes.Structure):
     ]
 
 
-# sys/statvfs.h
+# sys/mount.h
 
 
 class Statfs64(ctypes.Structure):
@@ -420,7 +454,7 @@ class Statfs64(ctypes.Structure):
         ("f_bavail", ctypes.c_uint64),
         ("f_files", ctypes.c_uint64),
         ("f_ffree", ctypes.c_uint64),
-        ("f_fsid", ctypes.c_uint64),
+        ("f_fsid", Fsid),
         ("f_owner", ctypes.c_uint32),
         ("f_type", ctypes.c_uint32),
         ("f_flags", ctypes.c_uint32),
@@ -428,8 +462,12 @@ class Statfs64(ctypes.Structure):
         ("f_fstypename", ctypes.c_char * 16),
         ("f_mntonname", ctypes.c_char * 1024),
         ("f_mntfromname", ctypes.c_char * 1024),
-        ("f_reserved", ctypes.c_uint32 * 8),
+        ("f_flags_ext", ctypes.c_uint32),
+        ("f_reserved", ctypes.c_uint32 * 7),
     ]
+
+
+# sys/statvfs.h
 
 
 class Statvfs64(ctypes.Structure):
@@ -453,7 +491,7 @@ class Statvfs64(ctypes.Structure):
 
 class ExternProc(ctypes.Structure):
     _fields_ = [
-        ("_pad0", ctypes.c_char * 32),
+        ("_pad0", ctypes.c_uint64 * 4),
         ("p_flag", ctypes.c_int32),
         ("p_stat", ctypes.c_char),
         ("_pad1", ctypes.c_char * 3),
@@ -467,7 +505,7 @@ class ExternProc(ctypes.Structure):
 
 class EProc(ctypes.Structure):
     _fields_ = [
-        ("_pad0", ctypes.c_char * 264),
+        ("_pad0", ctypes.c_uint64 * 33),
         ("e_ppid", ctypes.c_int32),
         ("e_pgid", ctypes.c_int32),
         ("_pad1", ctypes.c_char * 80),
@@ -516,7 +554,7 @@ class Arm64ThreadState64(ctypes.Structure):
         ("sp", ctypes.c_uint64),
         ("pc", ctypes.c_uint64),
         ("cpsr", ctypes.c_uint32),
-        ("flags", ctypes.c_uint32),
+        ("__pad", ctypes.c_uint32),
     ]
 
 
@@ -541,6 +579,7 @@ class MachTimespec(ctypes.Structure):
 
 
 class HostBasicInfo(ctypes.Structure):
+    _pack_ = 4
     _fields_ = [
         ("max_cpus", ctypes.c_int32),
         ("avail_cpus", ctypes.c_int32),
@@ -586,9 +625,9 @@ class MachMsgBody(ctypes.Structure):
 class MachMsgTypeDescriptor(ctypes.Structure):
     _fields_ = [
         ("pad1", ctypes.c_uint32),
-        ("pad1", ctypes.c_uint32),
-        ("pad1", ctypes.c_int, 24),
-        ("type", ctypes.c_uint8),
+        ("pad2", ctypes.c_uint32),
+        ("pad3", ctypes.c_uint32, 24),
+        ("type", ctypes.c_uint32, 8),
     ]
 
 
@@ -603,17 +642,19 @@ class MachMsgPortDescriptor(ctypes.Structure):
 
 
 class MachMsgOolDescriptor(ctypes.Structure):
+    _pack_ = 4
     _fields_ = [
         ("address", ctypes.c_uint64),
         ("deallocate", ctypes.c_uint8),
         ("copy", ctypes.c_uint8),
-        ("disposition", ctypes.c_uint8),
+        ("pad1", ctypes.c_uint8),
         ("type", ctypes.c_uint8),
         ("size", ctypes.c_uint32),
     ]
 
 
 class MachMsgOolPortsDescriptor(ctypes.Structure):
+    _pack_ = 4
     _fields_ = [
         ("address", ctypes.c_uint64),
         ("deallocate", ctypes.c_uint8),
@@ -625,6 +666,7 @@ class MachMsgOolPortsDescriptor(ctypes.Structure):
 
 
 class MachMsgGuardedPortDescriptor(ctypes.Structure):
+    _pack_ = 4
     _fields_ = [
         ("context", ctypes.c_uint64),
         ("flags", ctypes.c_uint16),
@@ -638,7 +680,7 @@ class MachMsgGuardedPortDescriptor(ctypes.Structure):
 
 
 class VmRegionBasicInfo64(ctypes.Structure):
-    _pack_ = 1
+    _pack_ = 4
     _fields_ = [
         ("protection", ctypes.c_int32),
         ("max_protection", ctypes.c_int32),

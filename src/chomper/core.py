@@ -112,12 +112,14 @@ class Chomper:
 
     @property
     def android_os(self) -> AndroidOs:
-        assert isinstance(self.os, AndroidOs)
+        if not isinstance(self.os, AndroidOs):
+            raise ValueError(f"android_os is unavailable on {type(self.os).__name__}")
         return self.os
 
     @property
     def ios_os(self) -> IosOs:
-        assert isinstance(self.os, IosOs)
+        if not isinstance(self.os, IosOs):
+            raise ValueError(f"ios_os is unavailable on {type(self.os).__name__}")
         return self.os
 
     def _setup_arch(self, arch: int):
@@ -297,7 +299,7 @@ class Chomper:
         raise SymbolMissing(f"{name} not found")
 
     def debug_symbol(self, address: int) -> str:
-        """Format address to `libfoo.so!0x1000`."""
+        """Format address for debug output."""
         module = self.find_module_by_address(address)
 
         if module:

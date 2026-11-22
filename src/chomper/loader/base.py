@@ -124,7 +124,10 @@ class Module:
 
     @property
     def macho_info(self) -> MachoInfo:
-        assert self._macho_info
+        if self._macho_info is None:
+            raise ValueError(
+                f"macho_info is only available for Mach-O modules: {self.path}"
+            )
         return self._macho_info
 
     def contains(self, address: int) -> bool:

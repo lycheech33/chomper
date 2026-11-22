@@ -24,8 +24,6 @@ class BlockDescriptor(ctypes.Structure):
     _fields_ = [
         ("reserved", ctypes.c_uint64),
         ("block_size", ctypes.c_uint64),
-        ("copy", ctypes.c_uint64),
-        ("dispose", ctypes.c_uint64),
     ]
 
 
